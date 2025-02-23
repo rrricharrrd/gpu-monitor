@@ -1,4 +1,4 @@
-from fasthtml.common import H1, H2, Body, Div, Head, Html, P, fast_app
+from fasthtml.common import H1, H2, Body, Div, Html, P, Script, fast_app
 from pydantic import BaseModel
 
 
@@ -27,7 +27,7 @@ DATA = Server(
 )
 
 
-app, rt = fast_app()
+app, rt = fast_app(pico=False)
 
 
 def _get_data():
@@ -46,7 +46,7 @@ def _get_utilization_color(utilization):
 
 def _make_html(servers):
     page = Html(
-        Head("script", src="https://cdn.tailwindcss.com"),
+        Script(src="https://cdn.tailwindcss.com"),
         Body(
             H1("GPU Monitor", cls="text-3xl font-bold mb-4"),
             *[
@@ -64,11 +64,11 @@ def _make_html(servers):
                         ],
                         cls="flex gap-4 mt-2",
                     ),
-                    cls="mb-6",
+                    cls="border border-black p-6 mb-6",
                 )
                 for server in servers
             ],
-            cls="p-6 bg-gray-100",
+            cls="p-4 bg-gray-100",
         ),
     )
     return page
