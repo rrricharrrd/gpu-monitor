@@ -24,15 +24,6 @@ class Server(BaseModel):
     gpus: list[GPU]
 
 
-DUMMY_DATA = Server(
-    name="foo",
-    gpus=[
-        GPU(index=0, name="bar", memory_used=0, memory_total=1024),
-        GPU(index=1, name="baz", memory_used=1600, memory_total=2048),
-    ],
-)
-
-
 app, rt = fast_app(pico=False)
 
 
@@ -48,7 +39,16 @@ def _get_utilization_color(utilization):
 
 def _get_data():
     if DEV:
-        return [DUMMY_DATA, DUMMY_DATA]  # TODO: get real data
+        return [
+            Server(
+                name="foo",
+                gpus=[
+                    GPU(index=0, name="gpu0", memory_used=0, memory_total=1024),
+                    GPU(index=1, name="gpu1", memory_used=1600, memory_total=2048),
+                ],
+            ),
+            Server(name="bar", gpus=[GPU(index=0, name="gpu0", memory_used=512, memory_total=1024)]),
+        ]
     else:
         result = subprocess.run(
             ["nvidia-smi", "--query-gpu=index,name,memory.total,memory.used", "--format=csv,noheader,nounits"],
