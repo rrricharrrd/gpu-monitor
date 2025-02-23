@@ -1,5 +1,11 @@
+import os
+import socket
+import subprocess
+
 from fasthtml.common import H1, H2, Body, Div, Html, P, Script, fast_app
 from pydantic import BaseModel
+
+DEV = int(os.environ.get("GPU_MONITOR_DEV", "1")) == 1
 
 
 class GPU(BaseModel):
@@ -18,7 +24,7 @@ class Server(BaseModel):
     gpus: list[GPU]
 
 
-DATA = Server(
+DUMMY_DATA = Server(
     name="foo",
     gpus=[
         GPU(index=0, name="bar", memory_used=0, memory_total=1024),
@@ -30,10 +36,6 @@ DATA = Server(
 app, rt = fast_app(pico=False)
 
 
-def _get_data():
-    return DATA  # TODO: get real data
-
-
 def _get_utilization_color(utilization):
     """Returns a Tailwind color class based on GPU memory utilization."""
     if utilization < 0.3:
@@ -42,6 +44,29 @@ def _get_utilization_color(utilization):
         return "bg-yellow-500"
     else:
         return "bg-red-500"
+
+
+def _get_data():
+    if DEV:
+        return [DUMMY_DATA, DUMMY_DATA]  # TODO: get real data
+    else:
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=index,name,memory.total,memory.used", "--format=csv,noheader,nounits"],
+            capture_output=True,
+            text=True,
+        )
+        gpus = []
+        for line in result.stdout.strip().split("\n"):
+            index, name, total_mem, used_mem = line.split(", ")
+            gpus.append(
+                GPU(
+                    index=index,
+                    name=name,
+                    memory_total=int(total_mem),
+                    memory_used=(used_mem),
+                )
+            )
+        return [Server(name=socket.gethostname(), gpus=gpus)]
 
 
 def _make_html(servers):
@@ -77,5 +102,5 @@ def _make_html(servers):
 @rt("/")
 def get():
     data = _get_data()
-    html = _make_html([data])
+    html = _make_html(data)
     return html
