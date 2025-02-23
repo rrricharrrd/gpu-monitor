@@ -1,7 +1,7 @@
 [project]
 name = "gpu-monitor"
 version = "0.1.0"
-description = "Add your description here"
+description = "Basic FastHTML app to show GPU utilization"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
