@@ -82,8 +82,8 @@ def _make_html(servers):
                             Div(
                                 P(f"GPU {gpu.index}", cls="font-bold"),
                                 P(gpu.name),
-                                P(f"{gpu.memory_used} / {gpu.memory_total} MB"),
-                                cls=f"p-4 w-40 text-white rounded-lg {_get_utilization_color(gpu.utilization)}",
+                                P(f"Utilization: {gpu.memory_used} / {gpu.memory_total} MB"),
+                                cls=f"p-4 text-white rounded-lg {_get_utilization_color(gpu.utilization)}",
                             )
                             for gpu in server.gpus
                         ],
