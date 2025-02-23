@@ -1,6 +1,5 @@
 repos:
   - repo: https://github.com/astral-sh/uv-pre-commit
-    # uv version.
     rev: 0.6.2
     hooks:
       - id: uv-lock
@@ -10,4 +9,6 @@ repos:
   rev: v0.9.7
   hooks:
     - id: ruff
+    - id: ruff
+      args: ["check", "--select", "I", "--fix"]
     - id: ruff-format

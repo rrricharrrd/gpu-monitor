@@ -1,5 +1,5 @@
+from fasthtml.common import H1, H2, Body, Div, Head, Html, P, fast_app
 from pydantic import BaseModel
-from fasthtml.common import fast_app, P, Head, Body, H1, H2, Div, Html
 
 
 class GPU(BaseModel):
