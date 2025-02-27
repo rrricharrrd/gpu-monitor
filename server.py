@@ -65,7 +65,7 @@ def _get_host_data(host):
                 index=index,
                 name=name,
                 memory_total=int(total_mem),
-                memory_used=(used_mem),
+                memory_used=int(used_mem),
             )
         )
     return Server(name=host, gpus=gpus)
@@ -77,34 +77,46 @@ def _get_data():
     return [_get_host_data(host) for host in hosts]
 
 
+def _make_servers_html(servers):
+    return [
+        Div(
+            H2(server.name, cls="text-xl font-semibold"),
+            Div(
+                *[
+                    Div(
+                        P(f"GPU {gpu.index}", cls="font-bold"),
+                        P(gpu.name),
+                        P(f"Utilization: {gpu.memory_used} / {gpu.memory_total} MB"),
+                        cls=f"p-4 text-white rounded-lg {_get_utilization_color(gpu.utilization)}",
+                    )
+                    for gpu in server.gpus
+                ],
+                cls="flex gap-4 mt-2",
+            ),
+            cls="border border-black p-6 mb-6",
+        )
+        for server in servers
+    ]
+
+
 def _make_html(servers):
     page = Html(
         Script(src="https://cdn.tailwindcss.com"),
+        Script(src="https://unpkg.com/htmx.org@1.9.5"),
         Body(
             H1("GPU Monitor", cls="text-3xl font-bold mb-4"),
-            *[
-                Div(
-                    H2(server.name, cls="text-xl font-semibold"),
-                    Div(
-                        *[
-                            Div(
-                                P(f"GPU {gpu.index}", cls="font-bold"),
-                                P(gpu.name),
-                                P(f"Utilization: {gpu.memory_used} / {gpu.memory_total} MB"),
-                                cls=f"p-4 text-white rounded-lg {_get_utilization_color(gpu.utilization)}",
-                            )
-                            for gpu in server.gpus
-                        ],
-                        cls="flex gap-4 mt-2",
-                    ),
-                    cls="border border-black p-6 mb-6",
-                )
-                for server in servers
-            ],
+            Div(*_make_servers_html(servers), hx_get="/servers", hx_trigger="every 5s"),
             cls="p-4 bg-gray-100",
         ),
     )
     return page
+
+
+@rt("/servers")
+def get_servers():
+    data = _get_data()
+    html = _make_servers_html(data)
+    return html
 
 
 @rt("/")
