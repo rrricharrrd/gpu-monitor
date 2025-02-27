@@ -33,7 +33,7 @@ class Server(BaseModel):
 app, rt = fast_app(pico=False)
 
 
-def _get_utilization_color(utilization):
+def _get_utilization_color(utilization: float) -> str:
     """Returns a Tailwind color class based on GPU memory utilization."""
     if utilization < 0.3:
         return "bg-green-500"
@@ -43,7 +43,7 @@ def _get_utilization_color(utilization):
         return "bg-red-500"
 
 
-def _nvidia_smi(host: str = "localhost"):
+def _nvidia_smi(host: str = "localhost") -> list[str]:
     if DEV:
         logging.debug(f"Loading data for {host}")
         text = Path(f"dummy-data/{host}.txt").read_text()
@@ -56,7 +56,7 @@ def _nvidia_smi(host: str = "localhost"):
     return text.strip().split("\n")
 
 
-def _get_host_data(host):
+def _get_host_data(host: str) -> Server:
     gpus = []
     for line in _nvidia_smi(host):
         index, name, used_mem, total_mem = line.split(", ")
@@ -71,13 +71,13 @@ def _get_host_data(host):
     return Server(name=host, gpus=gpus)
 
 
-def _get_data():
+def _get_data() -> list[Server]:
     hosts = [host.strip() for host in HOSTS_FILEPATH.read_text().strip().split("\n") if host.strip()]
     logging.debug(f"Getting data for hosts {hosts}")
     return [_get_host_data(host) for host in hosts]
 
 
-def _make_servers_html(servers):
+def _make_servers_html(servers: list[Server]):
     return [
         Div(
             H2(server.name, cls="text-xl font-semibold"),
@@ -99,7 +99,7 @@ def _make_servers_html(servers):
     ]
 
 
-def _make_html(servers):
+def _make_html(servers: list[Server]):
     page = Html(
         Script(src="https://cdn.tailwindcss.com"),
         Script(src="https://unpkg.com/htmx.org@1.9.5"),
