@@ -3,7 +3,7 @@ name = "gpu-monitor"
 version = "0.1.0"
 description = "Basic FastHTML app to show GPU utilization"
 readme = "README.md"
-requires-python = ">=3.13"
+# requires-python = ">=3.13"  # TODO
 dependencies = [
     "pydantic",
     "python-fasthtml"

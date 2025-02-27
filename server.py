@@ -1,11 +1,17 @@
+import logging
 import os
-import socket
 import subprocess
+from pathlib import Path
 
 from fasthtml.common import H1, H2, Body, Div, Html, P, Script, fast_app
 from pydantic import BaseModel
 
-DEV = int(os.environ.get("GPU_MONITOR_DEV", "1")) == 1
+HOSTS_FILEPATH = Path(os.environ.get("GPU_MONITOR_HOSTS", "hosts.txt")).resolve()
+DEV = int(os.environ.get("GPU_MONITOR_DEV", "0")) == 1
+if DEV:
+    logging.basicConfig(force=True)
+    logging.getLogger().setLevel(logging.DEBUG)
+logging.debug(f"Running in DEV mode: {bool(DEV)}")
 
 
 class GPU(BaseModel):
@@ -37,36 +43,38 @@ def _get_utilization_color(utilization):
         return "bg-red-500"
 
 
-def _get_data():
+def _nvidia_smi(host: str = "localhost"):
     if DEV:
-        return [
-            Server(
-                name="foo",
-                gpus=[
-                    GPU(index=0, name="gpu0", memory_used=0, memory_total=1024),
-                    GPU(index=1, name="gpu1", memory_used=1600, memory_total=2048),
-                ],
-            ),
-            Server(name="bar", gpus=[GPU(index=0, name="gpu0", memory_used=512, memory_total=1024)]),
-        ]
+        logging.debug(f"Loading data for {host}")
+        text = Path(f"dummy-data/{host}.txt").read_text()
     else:
-        result = subprocess.run(
-            ["nvidia-smi", "--query-gpu=index,name,memory.total,memory.used", "--format=csv,noheader,nounits"],
-            capture_output=True,
-            text=True,
-        )
-        gpus = []
-        for line in result.stdout.strip().split("\n"):
-            index, name, total_mem, used_mem = line.split(", ")
-            gpus.append(
-                GPU(
-                    index=index,
-                    name=name,
-                    memory_total=int(total_mem),
-                    memory_used=(used_mem),
-                )
+        command = ["nvidia-smi", "--query-gpu=index,name,memory.used,memory.total", "--format=csv,noheader,nounits"]
+        if host != "localhost":
+            command = ["ssh", host] + command
+        result = subprocess.run(command, capture_output=True, text=True)
+        text = result.stdout
+    return text.strip().split("\n")
+
+
+def _get_host_data(host):
+    gpus = []
+    for line in _nvidia_smi(host):
+        index, name, used_mem, total_mem = line.split(", ")
+        gpus.append(
+            GPU(
+                index=index,
+                name=name,
+                memory_total=int(total_mem),
+                memory_used=(used_mem),
             )
-        return [Server(name=socket.gethostname(), gpus=gpus)]
+        )
+    return Server(name=host, gpus=gpus)
+
+
+def _get_data():
+    hosts = [host.strip() for host in HOSTS_FILEPATH.read_text().strip().split("\n") if host.strip()]
+    logging.debug(f"Getting data for hosts {hosts}")
+    return [_get_host_data(host) for host in hosts]
 
 
 def _make_html(servers):
