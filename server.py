@@ -6,12 +6,13 @@ from pathlib import Path
 from fasthtml.common import H1, H2, Body, Div, Html, P, Script, fast_app
 from pydantic import BaseModel
 
+LOCALHOST = "localhost"
 HOSTS_FILEPATH = Path(os.environ.get("GPU_MONITOR_HOSTS", "hosts.txt")).resolve()
-DEV = int(os.environ.get("GPU_MONITOR_DEV", "0")) == 1
+DEV = bool(int(os.environ.get("GPU_MONITOR_DEV", "0")) == 1)
 if DEV:
     logging.basicConfig(force=True)
     logging.getLogger().setLevel(logging.DEBUG)
-logging.debug(f"Running in DEV mode: {bool(DEV)}")
+logging.debug(f"Running in DEV mode: {DEV}")
 
 
 class GPU(BaseModel):
@@ -30,7 +31,7 @@ class Server(BaseModel):
     gpus: list[GPU]
 
 
-app, rt = fast_app(pico=False)
+app, rt = fast_app(htmlx=True, pico=False, live=DEV)
 
 
 def _get_utilization_color(utilization: float) -> str:
@@ -43,31 +44,28 @@ def _get_utilization_color(utilization: float) -> str:
         return "bg-red-500"
 
 
-def _nvidia_smi(host: str = "localhost") -> list[str]:
-    if DEV:
-        logging.debug(f"Loading data for {host}")
-        text = Path(f"dummy-data/{host}.txt").read_text()
-    else:
-        command = ["nvidia-smi", "--query-gpu=index,name,memory.used,memory.total", "--format=csv,noheader,nounits"]
-        if host != "localhost":
-            command = ["ssh", host] + command
-        result = subprocess.run(command, capture_output=True, text=True)
-        text = result.stdout
-    return text.strip().split("\n")
+def _nvidia_smi(host: str = LOCALHOST) -> list[str]:
+    try:
+        if DEV:
+            logging.debug(f"Loading data for {host}")
+            text = Path(f"dummy-data/{host}.txt").read_text()
+        else:
+            command = ["nvidia-smi", "--query-gpu=index,name,memory.used,memory.total", "--format=csv,noheader,nounits"]
+            if host != LOCALHOST:
+                command = ["ssh", host] + command
+            result = subprocess.run(command, capture_output=True, text=True)
+            text = result.stdout
+        return text.strip().split("\n")
+    except Exception as e:
+        logging.error(f"Couldn't get data for {host}: {e}")
+        return []
 
 
 def _get_host_data(host: str) -> Server:
     gpus = []
     for line in _nvidia_smi(host):
         index, name, used_mem, total_mem = line.split(", ")
-        gpus.append(
-            GPU(
-                index=index,
-                name=name,
-                memory_total=int(total_mem),
-                memory_used=int(used_mem),
-            )
-        )
+        gpus.append(GPU(index=index, name=name, memory_total=int(total_mem), memory_used=int(used_mem)))
     return Server(name=host, gpus=gpus)
 
 

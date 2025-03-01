@@ -7,7 +7,7 @@ Basic FastHTML wrapper around `nvidia-smi` to monitor GPU utilization.
 ## Installation
 Using [`uv`](https://docs.astral.sh/uv/) is recommended.
 
-Edit `hosts.txt` with one line per server you want to display (see notes). Write "localhost" to refer to the host the server is running on.
+Edit `hosts.txt` with one line per server you want to display (see notes). Write "localhost" to refer to the host the uvicorn server is running on.
 
 Then run:
 ```bash
