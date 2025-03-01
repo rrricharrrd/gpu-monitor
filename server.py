@@ -1,5 +1,6 @@
 import logging
 import os
+import socket
 import subprocess
 from pathlib import Path
 
@@ -62,11 +63,12 @@ def _nvidia_smi(host: str = LOCALHOST) -> list[str]:
 
 
 def _get_host_data(host: str) -> Server:
+    hostname = host if host != LOCALHOST else socket.gethostname()
     gpus = []
     for line in _nvidia_smi(host):
         index, name, used_mem, total_mem = line.split(", ")
         gpus.append(GPU(index=index, name=name, memory_total=int(total_mem), memory_used=int(used_mem)))
-    return Server(name=host, gpus=gpus)
+    return Server(name=hostname, gpus=gpus)
 
 
 def _get_data() -> list[Server]:
