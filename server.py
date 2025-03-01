@@ -21,17 +21,23 @@ class GPU(BaseModel):
     name: str
     memory_used: int
     memory_total: int
+    host: str
+    is_reserved: bool = False
 
     @property
     def utilization(self):
         return self.memory_used / self.memory_total
 
     def __ft__(self):
+        id = f"{self.host}__{self.index}"
         return Div(
             P(f"GPU {self.index}", cls="font-bold"),
             P(self.name),
             P(f"Utilization: {self.memory_used} / {self.memory_total} MB"),
             cls=f"p-4 text-white rounded-lg {_get_utilization_color(self.utilization)}",
+            id=f"{self.host}__{self.index}",
+            hx_post=f"/reserve/{id}",
+            hx_trigger="click",
         )
 
 
@@ -82,7 +88,7 @@ def _get_host_data(host: str) -> Server:
     gpus = []
     for line in _nvidia_smi(host):
         index, name, used_mem, total_mem = line.split(", ")
-        gpus.append(GPU(index=index, name=name, memory_total=int(total_mem), memory_used=int(used_mem)))
+        gpus.append(GPU(index=index, name=name, memory_total=int(total_mem), memory_used=int(used_mem), host=hostname))
     return Server(name=hostname, gpus=gpus)
 
 
@@ -103,6 +109,12 @@ def _make_html(servers: list[Server]):
         ),
     )
     return page
+
+
+@app.post("/reserve/{id}")
+def reserve(id: str):
+    logging.debug(f"Reserving {id}")
+    pass
 
 
 @rt("/servers")
