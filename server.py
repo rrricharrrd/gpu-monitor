@@ -26,10 +26,25 @@ class GPU(BaseModel):
     def utilization(self):
         return self.memory_used / self.memory_total
 
+    def __ft__(self):
+        return Div(
+            P(f"GPU {self.index}", cls="font-bold"),
+            P(self.name),
+            P(f"Utilization: {self.memory_used} / {self.memory_total} MB"),
+            cls=f"p-4 text-white rounded-lg {_get_utilization_color(self.utilization)}",
+        )
+
 
 class Server(BaseModel):
     name: str
     gpus: list[GPU]
+
+    def __ft__(self):
+        return Div(
+            H2(self.name, cls="text-xl font-semibold"),
+            Div(*self.gpus, cls="flex gap-4 mt-2"),
+            cls="border border-black p-6 mb-6",
+        )
 
 
 app, rt = fast_app(htmlx=True, pico=False, live=DEV)
@@ -77,35 +92,13 @@ def _get_data() -> list[Server]:
     return [_get_host_data(host) for host in hosts]
 
 
-def _make_servers_html(servers: list[Server]):
-    return [
-        Div(
-            H2(server.name, cls="text-xl font-semibold"),
-            Div(
-                *[
-                    Div(
-                        P(f"GPU {gpu.index}", cls="font-bold"),
-                        P(gpu.name),
-                        P(f"Utilization: {gpu.memory_used} / {gpu.memory_total} MB"),
-                        cls=f"p-4 text-white rounded-lg {_get_utilization_color(gpu.utilization)}",
-                    )
-                    for gpu in server.gpus
-                ],
-                cls="flex gap-4 mt-2",
-            ),
-            cls="border border-black p-6 mb-6",
-        )
-        for server in servers
-    ]
-
-
 def _make_html(servers: list[Server]):
     page = Html(
         Script(src="https://cdn.tailwindcss.com"),
         Script(src="https://unpkg.com/htmx.org@1.9.5"),
         Body(
             H1("GPU Monitor", cls="text-3xl font-bold mb-4"),
-            Div(*_make_servers_html(servers), hx_get="/servers", hx_trigger="every 5s"),
+            Div(*servers, hx_get="/servers", hx_trigger="every 5s"),
             cls="p-4 bg-gray-100",
         ),
     )
@@ -114,13 +107,12 @@ def _make_html(servers: list[Server]):
 
 @rt("/servers")
 def get_servers():
-    data = _get_data()
-    html = _make_servers_html(data)
-    return html
+    servers = _get_data()
+    return servers
 
 
 @rt("/")
 def get():
-    data = _get_data()
-    html = _make_html(data)
+    servers = _get_data()
+    html = _make_html(servers)
     return html
