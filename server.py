@@ -66,6 +66,7 @@ app, rt = fast_app(htmlx=True, pico=False, live=DEV)
 
 def _get_utilization_color(utilization: float, is_reserved: bool) -> str:
     """Returns a Tailwind color class based on GPU memory utilization."""
+    # TODO check logic here
     if utilization < 0.3:
         return "bg-blue-500" if is_reserved else "bg-green-500"
     elif utilization < 0.7:
@@ -98,27 +99,30 @@ def _get_host_data(host: str) -> None:
     for line in _nvidia_smi(host):
         index, name, used_mem, total_mem = line.split(", ")
         gpus.append(GPU(index=index, name=name, memory_total=int(total_mem), memory_used=int(used_mem), host=hostname))
-    SERVERS[hostname] = Server(name=hostname, gpus=gpus)
+    SERVERS[hostname] = Server(name=hostname, gpus=gpus)  # TODO don't overwrite reservedness
 
 
-async def _refresh_data():
+async def _refresh_data() -> list[Server]:
     global SERVERS_TS
     now = datetime.now()
-    if SERVERS_TS is None or (now - SERVERS_TS) > timedelta(minutes=1):
-        async with SERVERS_LOCK:
+    async with SERVERS_LOCK:
+        if SERVERS_TS is None or (now - SERVERS_TS) > timedelta(minutes=1):
             logging.debug("Refreshing server data")
             for host in HOSTS:
                 _get_host_data(host)
             SERVERS_TS = datetime.now()
+        else:
+            logging.debug("Using cached server data")
+        return list(SERVERS.values())
 
 
-def _make_html():
+def _make_html(servers):
     page = Html(
         Script(src="https://cdn.tailwindcss.com"),
         Script(src="https://unpkg.com/htmx.org@1.9.5"),
         Body(
             H1("GPU Monitor", cls="text-3xl font-bold mb-4"),
-            Div(*SERVERS.values(), hx_get="/servers", hx_trigger="every 30s"),
+            Div(*servers, hx_get="/servers", hx_trigger="every 30s"),
             cls="p-4 bg-gray-100",
         ),
     )
@@ -143,15 +147,12 @@ async def reserve(server_name: str, index: str):
 
 @app.get("/servers")
 async def get_servers():
-    await _refresh_data()
-    async with SERVERS_LOCK:
-        servers = list(SERVERS.values())
+    servers = await _refresh_data()
     return servers
 
 
 @app.get("/")
 async def get():
-    await _refresh_data()
-    async with SERVERS_LOCK:
-        html = _make_html()
+    servers = await _refresh_data()
+    html = _make_html(servers)
     return html
