@@ -3,21 +3,25 @@ import logging
 import os
 import socket
 import subprocess
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from fasthtml.common import H1, H2, Body, Div, Html, P, Script, fast_app
 from pydantic import BaseModel
 
-LOCALHOST = "localhost"
-HOSTS_FILEPATH = Path(os.environ.get("GPU_MONITOR_HOSTS", "hosts.txt")).resolve()
 DEV = bool(int(os.environ.get("GPU_MONITOR_DEV", "0")) == 1)
 if DEV:
     logging.basicConfig(force=True)
     logging.getLogger().setLevel(logging.DEBUG)
 logging.debug(f"Running in DEV mode: {DEV}")
 
+LOCALHOST = "localhost"
+HOSTS_FILEPATH = Path(os.environ.get("GPU_MONITOR_HOSTS", "hosts.txt")).resolve()
+HOSTS = [host.strip() for host in HOSTS_FILEPATH.read_text().strip().split("\n") if host.strip()]
+
 SERVERS = {}
 SERVERS_LOCK = asyncio.Lock()
+SERVERS_TS = None
 
 
 class GPU(BaseModel):
@@ -97,11 +101,15 @@ def _get_host_data(host: str) -> None:
     SERVERS[hostname] = Server(name=hostname, gpus=gpus)
 
 
-def _refresh_data():
-    hosts = [host.strip() for host in HOSTS_FILEPATH.read_text().strip().split("\n") if host.strip()]
-    logging.debug(f"Getting data for hosts {hosts}")
-    for host in hosts:
-        _get_host_data(host)
+async def _refresh_data():
+    global SERVERS_TS
+    now = datetime.now()
+    if SERVERS_TS is None or (now - SERVERS_TS) > timedelta(minutes=1):
+        async with SERVERS_LOCK:
+            logging.debug("Refreshing server data")
+            for host in HOSTS:
+                _get_host_data(host)
+            SERVERS_TS = datetime.now()
 
 
 def _make_html():
@@ -135,7 +143,7 @@ async def reserve(server_name: str, index: str):
 
 @app.get("/servers")
 async def get_servers():
-    _refresh_data()
+    await _refresh_data()
     async with SERVERS_LOCK:
         servers = list(SERVERS.values())
     return servers
@@ -143,7 +151,7 @@ async def get_servers():
 
 @app.get("/")
 async def get():
+    await _refresh_data()
     async with SERVERS_LOCK:
-        _refresh_data()
         html = _make_html()
     return html
