@@ -33,14 +33,13 @@ class GPU(BaseModel):
         return self.memory_used / self.memory_total
 
     def __ft__(self):
-        id = f"{self.host}___{self.index}"
         return Div(
             P(f"GPU {self.index}", cls="font-bold"),
             P(self.name),
             P(f"Utilization: {self.memory_used} / {self.memory_total} MB"),
             cls=f"p-4 text-white rounded-lg {_get_utilization_color(self.utilization, self.is_reserved)}",
-            id=f"{self.host}___{self.index}",
-            hx_post=f"/reserve/{id}",
+            id=f"{self.host}/{self.index}",
+            hx_post=f"/reserve/{self.host}/{self.index}",
             hx_trigger="click",
             hx_swap="outerHTML",
         )
@@ -118,10 +117,9 @@ def _make_html():
     return page
 
 
-@app.post("/reserve/{id}")
-async def reserve(id: str):
-    logging.debug(f"Reserving {id}")
-    server_name, index = id.split("___")
+@app.post("/reserve/{server_name}/{index}")
+async def reserve(server_name: str, index: str):
+    logging.debug(f"Reserving {server_name}-{index}")
     async with SERVERS_LOCK:
         server = SERVERS.get(server_name)
         if server is not None:
