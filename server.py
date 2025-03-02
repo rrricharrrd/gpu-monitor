@@ -15,6 +15,8 @@ if DEV:
     logging.getLogger().setLevel(logging.DEBUG)
 logging.debug(f"Running in DEV mode: {DEV}")
 
+SERVERS = {}
+
 
 class GPU(BaseModel):
     index: int
@@ -83,28 +85,30 @@ def _nvidia_smi(host: str = LOCALHOST) -> list[str]:
         return []
 
 
-def _get_host_data(host: str) -> Server:
+def _get_host_data(host: str) -> None:
+    global SERVERS
     hostname = host if host != LOCALHOST else socket.gethostname()
     gpus = []
     for line in _nvidia_smi(host):
         index, name, used_mem, total_mem = line.split(", ")
         gpus.append(GPU(index=index, name=name, memory_total=int(total_mem), memory_used=int(used_mem), host=hostname))
-    return Server(name=hostname, gpus=gpus)
+    SERVERS[hostname] = Server(name=hostname, gpus=gpus)
 
 
-def _get_data() -> list[Server]:
+def _refresh_data():
     hosts = [host.strip() for host in HOSTS_FILEPATH.read_text().strip().split("\n") if host.strip()]
     logging.debug(f"Getting data for hosts {hosts}")
-    return [_get_host_data(host) for host in hosts]
+    for host in hosts:
+        _get_host_data(host)
 
 
-def _make_html(servers: list[Server]):
+def _make_html():
     page = Html(
         Script(src="https://cdn.tailwindcss.com"),
         Script(src="https://unpkg.com/htmx.org@1.9.5"),
         Body(
             H1("GPU Monitor", cls="text-3xl font-bold mb-4"),
-            Div(*servers, hx_get="/servers", hx_trigger="every 5s"),
+            Div(*SERVERS.values(), hx_get="/servers", hx_trigger="every 5s"),
             cls="p-4 bg-gray-100",
         ),
     )
@@ -119,12 +123,13 @@ def reserve(id: str):
 
 @rt("/servers")
 def get_servers():
-    servers = _get_data()
+    _refresh_data()
+    servers = list(SERVERS.values())
     return servers
 
 
 @rt("/")
 def get():
-    servers = _get_data()
-    html = _make_html(servers)
+    _refresh_data()
+    html = _make_html()
     return html
