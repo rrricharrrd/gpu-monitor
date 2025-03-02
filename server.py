@@ -31,15 +31,16 @@ class GPU(BaseModel):
         return self.memory_used / self.memory_total
 
     def __ft__(self):
-        id = f"{self.host}__{self.index}"
+        id = f"{self.host}___{self.index}"
         return Div(
             P(f"GPU {self.index}", cls="font-bold"),
             P(self.name),
             P(f"Utilization: {self.memory_used} / {self.memory_total} MB"),
-            cls=f"p-4 text-white rounded-lg {_get_utilization_color(self.utilization)}",
-            id=f"{self.host}__{self.index}",
+            cls=f"p-4 text-white rounded-lg {_get_utilization_color(self.utilization, self.is_reserved)}",
+            id=f"{self.host}___{self.index}",
             hx_post=f"/reserve/{id}",
             hx_trigger="click",
+            hx_swap="outerHTML",
         )
 
 
@@ -58,10 +59,10 @@ class Server(BaseModel):
 app, rt = fast_app(htmlx=True, pico=False, live=DEV)
 
 
-def _get_utilization_color(utilization: float) -> str:
+def _get_utilization_color(utilization: float, is_reserved: bool) -> str:
     """Returns a Tailwind color class based on GPU memory utilization."""
     if utilization < 0.3:
-        return "bg-green-500"
+        return "bg-blue-500" if is_reserved else "bg-green-500"
     elif utilization < 0.7:
         return "bg-yellow-500"
     else:
@@ -108,7 +109,7 @@ def _make_html():
         Script(src="https://unpkg.com/htmx.org@1.9.5"),
         Body(
             H1("GPU Monitor", cls="text-3xl font-bold mb-4"),
-            Div(*SERVERS.values(), hx_get="/servers", hx_trigger="every 5s"),
+            Div(*SERVERS.values(), hx_get="/servers", hx_trigger="every 30s"),
             cls="p-4 bg-gray-100",
         ),
     )
@@ -118,7 +119,17 @@ def _make_html():
 @app.post("/reserve/{id}")
 async def reserve(id: str):
     logging.debug(f"Reserving {id}")
-    pass
+    server_name, index = id.split("___")
+    server = SERVERS.get(server_name)
+    if server is not None:
+        logging.debug(f"Server: {server}")
+        try:
+            gpu = [gpu for gpu in server.gpus if gpu.index == int(index)][0]
+            gpu.is_reserved = not gpu.is_reserved  # toggle status
+            logging.debug(f"New GPU status: {gpu}")
+            return gpu
+        except IndexError:
+            pass
 
 
 @app.get("/servers")
