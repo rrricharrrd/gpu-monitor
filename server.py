@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import socket
@@ -16,6 +17,7 @@ if DEV:
 logging.debug(f"Running in DEV mode: {DEV}")
 
 SERVERS = {}
+SERVERS_LOCK = asyncio.Lock()
 
 
 class GPU(BaseModel):
@@ -120,27 +122,30 @@ def _make_html():
 async def reserve(id: str):
     logging.debug(f"Reserving {id}")
     server_name, index = id.split("___")
-    server = SERVERS.get(server_name)
-    if server is not None:
-        logging.debug(f"Server: {server}")
-        try:
-            gpu = [gpu for gpu in server.gpus if gpu.index == int(index)][0]
-            gpu.is_reserved = not gpu.is_reserved  # toggle status
-            logging.debug(f"New GPU status: {gpu}")
-            return gpu
-        except IndexError:
-            pass
+    async with SERVERS_LOCK:
+        server = SERVERS.get(server_name)
+        if server is not None:
+            logging.debug(f"Server: {server}")
+            try:
+                gpu = [gpu for gpu in server.gpus if gpu.index == int(index)][0]
+                gpu.is_reserved = not gpu.is_reserved  # toggle status
+                logging.debug(f"New GPU status: {gpu}")
+                return gpu
+            except IndexError:
+                pass
 
 
 @app.get("/servers")
 async def get_servers():
     _refresh_data()
-    servers = list(SERVERS.values())
+    async with SERVERS_LOCK:
+        servers = list(SERVERS.values())
     return servers
 
 
 @app.get("/")
 async def get():
-    _refresh_data()
-    html = _make_html()
+    async with SERVERS_LOCK:
+        _refresh_data()
+        html = _make_html()
     return html
