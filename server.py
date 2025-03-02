@@ -116,20 +116,20 @@ def _make_html():
 
 
 @app.post("/reserve/{id}")
-def reserve(id: str):
+async def reserve(id: str):
     logging.debug(f"Reserving {id}")
     pass
 
 
-@rt("/servers")
-def get_servers():
+@app.get("/servers")
+async def get_servers():
     _refresh_data()
     servers = list(SERVERS.values())
     return servers
 
 
-@rt("/")
-def get():
+@app.get("/")
+async def get():
     _refresh_data()
     html = _make_html()
     return html
