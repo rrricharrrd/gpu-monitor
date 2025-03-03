@@ -19,10 +19,6 @@ LOCALHOST = "localhost"
 HOSTS_FILEPATH = Path(os.environ.get("GPU_MONITOR_HOSTS", "hosts.txt")).resolve()
 HOSTS = [host.strip() for host in HOSTS_FILEPATH.read_text().strip().split("\n") if host.strip()]
 
-SERVERS = {}
-SERVERS_LOCK = asyncio.Lock()
-SERVERS_TS = None
-
 
 class GPU(BaseModel):
     index: int
@@ -42,7 +38,6 @@ class GPU(BaseModel):
             P(self.name),
             P(f"Utilization: {self.memory_used} / {self.memory_total} MB"),
             cls=f"p-4 text-white rounded-lg {_get_utilization_color(self.utilization, self.is_reserved)}",
-            id=f"{self.host}/{self.index}",
             hx_post=f"/reserve/{self.host}/{self.index}",
             hx_trigger="click",
             hx_swap="outerHTML",
@@ -51,7 +46,7 @@ class GPU(BaseModel):
 
 class Server(BaseModel):
     name: str
-    gpus: list[GPU]
+    gpus: list[GPU] = []
 
     def __ft__(self):
         return Div(
@@ -61,7 +56,49 @@ class Server(BaseModel):
         )
 
 
+SERVERS: dict[str, Server] = {}
+SERVERS_LOCK = asyncio.Lock()
+SERVERS_TS = None
+
 app, rt = fast_app(htmlx=True, pico=False, live=DEV)
+
+
+async def _write_cache(server_name: str, gpus: list[GPU]):
+    global SERVERS
+    async with SERVERS_LOCK:
+        logging.debug(f"Refreshing server data for {server_name}")
+        server = SERVERS.get(server_name)
+        if server is None:
+            server = Server(name=server_name)
+            SERVERS[server_name] = server
+        for gpu in gpus:
+            matches = [g for g in server.gpus if g.index == gpu.index]
+            if len(matches) == 0:
+                server.gpus.append(gpu)
+            elif len(matches) == 1:
+                matches[0].index = gpu.index
+                matches[0].name = gpu.name
+                matches[0].memory_used = gpu.memory_used
+                matches[0].memory_total = gpu.memory_total
+                matches[0].host = gpu.host
+                # TODO: logic for updating reservedness status
+            else:
+                logging.error("Unexpectedly multiple GPUs with same index")
+
+
+async def _read_cache(server_name, index):
+    async with SERVERS_LOCK:
+        server = SERVERS.get(server_name)
+        if server is not None:
+            logging.debug(f"Server: {server}")
+            try:
+                gpu = [gpu for gpu in server.gpus if gpu.index == int(index)][0]
+                gpu.is_reserved = not gpu.is_reserved  # toggle status
+                logging.debug(f"New GPU status: {gpu}")
+                return gpu
+            except IndexError:
+                pass
+        return None
 
 
 def _get_utilization_color(utilization: float, is_reserved: bool) -> str:
@@ -76,6 +113,7 @@ def _get_utilization_color(utilization: float, is_reserved: bool) -> str:
 
 
 def _nvidia_smi(host: str = LOCALHOST) -> list[str]:
+    # TODO use async-multiprocessing
     try:
         if DEV:
             logging.debug(f"Loading data for {host}")
@@ -92,37 +130,35 @@ def _nvidia_smi(host: str = LOCALHOST) -> list[str]:
         return []
 
 
-def _get_host_data(host: str) -> None:
-    global SERVERS
+async def _refresh_host_data(host: str) -> None:
     hostname = host if host != LOCALHOST else socket.gethostname()
     gpus = []
     for line in _nvidia_smi(host):
         index, name, used_mem, total_mem = line.split(", ")
         gpus.append(GPU(index=index, name=name, memory_total=int(total_mem), memory_used=int(used_mem), host=hostname))
-    SERVERS[hostname] = Server(name=hostname, gpus=gpus)  # TODO don't overwrite reservedness
+    await _write_cache(hostname, gpus)
 
 
 async def _refresh_data() -> list[Server]:
     global SERVERS_TS
     now = datetime.now()
-    async with SERVERS_LOCK:
-        if SERVERS_TS is None or (now - SERVERS_TS) > timedelta(minutes=1):
-            logging.debug("Refreshing server data")
-            for host in HOSTS:
-                _get_host_data(host)
-            SERVERS_TS = datetime.now()
-        else:
-            logging.debug("Using cached server data")
-        return list(SERVERS.values())
+    if SERVERS_TS is None or (now - SERVERS_TS) > timedelta(minutes=1):
+        logging.debug("Refreshing server data")
+        for host in HOSTS:
+            await _refresh_host_data(host)
+        SERVERS_TS = datetime.now()
+    else:
+        logging.debug("Using cached server data")
+    return list(SERVERS.values())
 
 
-def _make_html(servers):
+def _make_html(servers: list[Server]):
     page = Html(
         Script(src="https://cdn.tailwindcss.com"),
         Script(src="https://unpkg.com/htmx.org@1.9.5"),
         Body(
             H1("GPU Monitor", cls="text-3xl font-bold mb-4"),
-            Div(*servers, hx_get="/servers", hx_trigger="every 30s"),
+            Div(*servers, hx_get="/servers", hx_trigger="every 5s"),
             cls="p-4 bg-gray-100",
         ),
     )
@@ -132,17 +168,8 @@ def _make_html(servers):
 @app.post("/reserve/{server_name}/{index}")
 async def reserve(server_name: str, index: str):
     logging.debug(f"Reserving {server_name}-{index}")
-    async with SERVERS_LOCK:
-        server = SERVERS.get(server_name)
-        if server is not None:
-            logging.debug(f"Server: {server}")
-            try:
-                gpu = [gpu for gpu in server.gpus if gpu.index == int(index)][0]
-                gpu.is_reserved = not gpu.is_reserved  # toggle status
-                logging.debug(f"New GPU status: {gpu}")
-                return gpu
-            except IndexError:
-                pass
+    gpu = await _read_cache(server_name, index)
+    return gpu
 
 
 @app.get("/servers")
